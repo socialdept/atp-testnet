@@ -118,6 +118,31 @@ test('can create account', function () {
 
 The `UsesTestnet` trait boots the testnet once per test class and tears it down after all tests complete.
 
+## Test Isolation
+
+The testnet accumulates state across tests (accounts, DIDs, relay subscriptions). Use the reset methods to start each test with a clean slate:
+
+```php
+// Reset everything before each test
+beforeEach(function () {
+    $this->testnet->resetAll();
+});
+
+// Or reset individual services
+beforeEach(function () {
+    $this->testnet->resetPds();   // Clear accounts and repos only
+});
+```
+
+| Method | What it clears |
+|--------|---------------|
+| `resetPds()` | All accounts, repos, sessions, invite codes (SQLite truncate) |
+| `resetPlc()` | All DIDs and operations (Postgres truncate) |
+| `resetRelay()` | All host subscriptions, account tracking, persisted data |
+| `resetAll()` | All of the above |
+
+Services stay running and healthy after reset — no container restarts needed.
+
 ## Configuration
 
 ```php
@@ -154,6 +179,12 @@ $testnet->relay(): RelayService
 
 // Relay
 $testnet->requestRelayCrawl(): void
+
+// Reset (for test isolation)
+$testnet->resetPds(): void       // Truncate all PDS accounts and repos
+$testnet->resetPlc(): void       // Truncate all DIDs and operations
+$testnet->resetRelay(): void     // Truncate relay subscriptions and data
+$testnet->resetAll(): void       // Reset PDS + PLC + Relay
 
 // Config
 $testnet->config(): TestnetConfig
