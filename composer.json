@@ -1,0 +1,53 @@
+{
+    "name": "socialdept/atp-testnet",
+    "description": "Stand up a local AT Protocol testnet for integration testing in PHP",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/socialdept/atp-testnet",
+    "keywords": [
+        "AT Protocol",
+        "ATP",
+        "Testnet",
+        "Testing",
+        "Docker",
+        "PLC",
+        "PDS",
+        "Relay",
+        "Integration Testing"
+    ],
+    "require": {
+        "php": "^8.3",
+        "guzzlehttp/guzzle": "^7.0",
+        "socialdept/atp-cbor": "^0.2",
+        "symfony/process": "^7.0",
+        "textalk/websocket": "^1.5"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.89",
+        "phpunit/phpunit": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SocialDept\\AtpTestnet\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SocialDept\\AtpTestnet\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/testnet-build"
+    ],
+    "scripts": {
+        "testnet:build": "php bin/testnet-build",
+        "testnet:rebuild": "php bin/testnet-build --rebuild",
+        "test": "vendor/bin/phpunit",
+        "format": "vendor/bin/php-cs-fixer fix"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
+    }
+}

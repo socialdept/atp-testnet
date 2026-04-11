@@ -1,0 +1,87 @@
+services:
+  plc_pg:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: plc
+      POSTGRES_USER: plc
+      POSTGRES_PASSWORD: plc
+    healthcheck:
+      test: pg_isready -U plc
+      interval: 500ms
+      timeout: 10s
+      retries: 20
+
+  plc:
+    image: atp-testnet-plc:latest
+    depends_on:
+      plc_pg:
+        condition: service_healthy
+    ports:
+      - "${ATP_TESTNET_PLC_PORT:-7100}:3000"
+    environment:
+      DB_CREDS_JSON: '{"username":"plc","password":"plc","host":"plc_pg","port":"5432","database":"plc"}'
+      DB_MIGRATE_CREDS_JSON: '{"username":"plc","password":"plc","host":"plc_pg","port":"5432","database":"plc"}'
+      ENABLE_MIGRATIONS: "true"
+      LOG_ENABLED: "true"
+      LOG_LEVEL: info
+      LOG_DESTINATION: "1"
+
+  relay_pg:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: relay
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+    healthcheck:
+      test: pg_isready -U relay
+      interval: 500ms
+      timeout: 10s
+      retries: 20
+
+  relay:
+    image: atp-testnet-relay:latest
+    depends_on:
+      relay_pg:
+        condition: service_healthy
+      plc:
+        condition: service_started
+    ports:
+      - "${ATP_TESTNET_RELAY_PORT:-7101}:2470"
+    environment:
+      RELAY_ADMIN_PASSWORD: testnet-relay-admin
+      RELAY_PLC_HOST: http://plc:3000
+      DATABASE_URL: postgres://relay:relay@relay_pg:5432/relay?sslmode=disable
+      RELAY_PERSIST_DIR: /data
+      RELAY_DISABLE_SSRF: "1"
+      RELAY_ALLOW_INSECURE_HOSTS: "1"
+    volumes:
+      - relay_data:/data
+
+  pds:
+    image: ghcr.io/bluesky-social/pds:0.4
+    depends_on:
+      plc:
+        condition: service_started
+    ports:
+      - "${ATP_TESTNET_PDS_PORT:-7102}:3000"
+    environment:
+      PDS_HOSTNAME: pds.test
+      PDS_PORT: "3000"
+      PDS_DATA_DIRECTORY: /pds/data
+      PDS_BLOBSTORE_DISK_LOCATION: /pds/blobs
+      PDS_DID_PLC_URL: http://plc:3000
+      PDS_CRAWLERS: http://relay:2470
+      PDS_DEV_MODE: "1"
+      PDS_INVITE_REQUIRED: "false"
+      PDS_JWT_SECRET: ${ATP_TESTNET_JWT_SECRET:-testnet-jwt-secret}
+      PDS_ADMIN_PASSWORD: ${ATP_TESTNET_ADMIN_PASSWORD:-testnet-admin}
+      PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX: ${ATP_TESTNET_PLC_ROTATION_KEY:-32368eae9ee6909042912c57c5db0639b33202602938c99e8c6b094f291e4b26}
+      PDS_SERVICE_HANDLE_DOMAINS: .test
+    volumes:
+      - pds_data:/pds/data
+      - pds_blobs:/pds/blobs
+
+volumes:
+  relay_data: {}
+  pds_data: {}
+  pds_blobs: {}

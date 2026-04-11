@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+foreach ($autoloadPaths as $path) {
+    if (file_exists($path)) {
+        require $path;
+        break;
+    }
+}
+
+use SocialDept\AtpTestnet\ImageBuilder;
+
+echo "ATP Testnet — Building Docker images from source\n";
+echo "================================================\n\n";
+
+// Check Docker is available
+exec('docker --version 2>&1', $output, $code);
+if ($code !== 0) {
+    echo "Error: Docker is not installed or not running.\n";
+    echo "Install Docker: https://docs.docker.com/get-docker/\n";
+    exit(1);
+}
+
+$rebuild = in_array('--rebuild', $argv, true);
+$builder = new ImageBuilder();
+
+if ($rebuild) {
+    echo "Rebuilding all images (--rebuild)...\n\n";
+    $builder->rebuildAll();
+} else {
+    echo "Building missing images (use --rebuild to force)...\n\n";
+    $builder->buildAll();
+}
+
+echo "\nDone!\n";
