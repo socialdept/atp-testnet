@@ -147,6 +147,122 @@ class Testnet
     }
 
     /**
+     * Reset all PDS data (accounts, repos, sequences).
+     * Truncates SQLite tables inside the PDS container without restarting it.
+     */
+    public function resetPds(): void
+    {
+        $container = "{$this->config->projectName}-pds-1";
+
+        $script = <<<'JS'
+            const Database = require('/app/node_modules/.pnpm/better-sqlite3@10.1.0/node_modules/better-sqlite3');
+            const fs = require('fs');
+
+            // Reset account database — delete all user data, preserve schema
+            const db = new Database('/pds/data/account.sqlite');
+            const tables = db.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite%' AND name NOT LIKE 'kysely%'"
+            ).all().map(t => t.name);
+
+            // Disable foreign keys, truncate all tables, re-enable
+            db.pragma('foreign_keys = OFF');
+            for (const table of tables) {
+                db.exec(`DELETE FROM "${table}"`);
+            }
+            db.pragma('foreign_keys = ON');
+            db.close();
+
+            // Reset sequencer
+            const seq = new Database('/pds/data/sequencer.sqlite');
+            seq.exec('DELETE FROM repo_seq');
+            seq.close();
+
+            // Remove per-actor repo directories
+            const actorsDir = '/pds/data/actors';
+            if (fs.existsSync(actorsDir)) {
+                fs.rmSync(actorsDir, { recursive: true, force: true });
+                fs.mkdirSync(actorsDir);
+            }
+
+            console.log('reset-ok');
+        JS;
+
+        $process = new Process(['docker', 'exec', $container, 'node', '-e', $script]);
+        $process->setTimeout(10);
+        $process->run();
+
+        if (! $process->isSuccessful() || ! str_contains($process->getOutput(), 'reset-ok')) {
+            throw new RuntimeException(
+                "Failed to reset PDS data: {$process->getErrorOutput()}"
+            );
+        }
+    }
+
+    /**
+     * Reset the PLC directory (truncate all DIDs and operations).
+     */
+    public function resetPlc(): void
+    {
+        $container = "{$this->config->projectName}-plc_pg-1";
+
+        $process = new Process([
+            'docker', 'exec', $container,
+            'psql', '-U', 'plc', '-d', 'plc', '-c',
+            'TRUNCATE operations, dids, admin_logs CASCADE;',
+        ]);
+        $process->setTimeout(10);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(
+                "Failed to reset PLC data: {$process->getErrorOutput()}"
+            );
+        }
+    }
+
+    /**
+     * Reset the relay (truncate all hosts, accounts, and persisted data).
+     */
+    public function resetRelay(): void
+    {
+        $pgContainer = "{$this->config->projectName}-relay_pg-1";
+        $relayContainer = "{$this->config->projectName}-relay-1";
+
+        // Truncate relay postgres tables
+        $process = new Process([
+            'docker', 'exec', $pgContainer,
+            'psql', '-U', 'relay', '-d', 'relay', '-c',
+            'TRUNCATE account, account_repo, host, log_file_refs, domain_bans CASCADE;',
+        ]);
+        $process->setTimeout(10);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException(
+                "Failed to reset relay database: {$process->getErrorOutput()}"
+            );
+        }
+
+        // Clear persisted data directory
+        $clear = new Process([
+            'docker', 'exec', $relayContainer,
+            'sh', '-c', 'rm -rf /data/* 2>/dev/null; true',
+        ]);
+        $clear->setTimeout(5);
+        $clear->run();
+    }
+
+    /**
+     * Reset all services (PDS, PLC, and Relay).
+     */
+    public function resetAll(): void
+    {
+        $this->resetPds();
+        $this->resetPlc();
+        $this->resetRelay();
+    }
+
+    /**
      * Check if all services are healthy.
      */
     public function isRunning(): bool

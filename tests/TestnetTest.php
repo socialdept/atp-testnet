@@ -341,6 +341,11 @@ class TestnetTest extends TestCase
 
     public function test_relay_is_healthy(): void
     {
+        // Reset PDS + PLC before relay tests to avoid interference from PLC operation tests
+        // Don't reset relay — it needs its subscription state intact
+        self::$testnet->resetPds();
+        self::$testnet->resetPlc();
+
         $this->assertTrue(self::$testnet->relay()->isHealthy());
     }
 
@@ -430,5 +435,83 @@ class TestnetTest extends TestCase
         $frames = self::$testnet->relay()->consumeFirehose(timeoutMs: 3000, cursor: 0);
 
         $this->assertGreaterThanOrEqual(2, count($frames), 'Should see create + delete events');
+    }
+
+    // -------------------------------------------------------------------------
+    // Reset (run last — destructive operations)
+    // -------------------------------------------------------------------------
+
+    public function test_reset_pds_clears_all_accounts(): void
+    {
+        $account = self::$testnet->createAccount('reset1');
+        self::$testnet->createAccount('reset2');
+
+        $info = self::$testnet->pds()->describeRepo($account->did);
+        $this->assertSame($account->did, $info['did']);
+
+        self::$testnet->resetPds();
+
+        $this->expectException(\GuzzleHttp\Exception\ClientException::class);
+        self::$testnet->pds()->describeRepo($account->did);
+    }
+
+    public function test_reset_pds_allows_new_accounts(): void
+    {
+        self::$testnet->createAccount('beforereset');
+        self::$testnet->resetPds();
+
+        $account = self::$testnet->createAccount('beforereset');
+        $this->assertStringStartsWith('did:plc:', $account->did);
+        $this->assertSame('beforereset.test', $account->handle);
+    }
+
+    public function test_reset_pds_keeps_services_healthy(): void
+    {
+        self::$testnet->createAccount('healthcheck');
+        self::$testnet->resetPds();
+
+        $this->assertTrue(self::$testnet->pds()->isHealthy());
+        $this->assertTrue(self::$testnet->plc()->isHealthy());
+    }
+
+    public function test_reset_pds_allows_same_email_reuse(): void
+    {
+        self::$testnet->createAccount('emailtest', 'reuse@test.invalid');
+        self::$testnet->resetPds();
+
+        $account = self::$testnet->createAccount('emailtest2', 'reuse@test.invalid');
+        $this->assertStringStartsWith('did:plc:', $account->did);
+    }
+
+    public function test_reset_plc_clears_all_dids(): void
+    {
+        $account = self::$testnet->createAccount('plcreset');
+
+        $doc = self::$testnet->plc()->getDocument($account->did);
+        $this->assertSame($account->did, $doc['id']);
+
+        self::$testnet->resetPlc();
+
+        $this->expectException(\GuzzleHttp\Exception\ClientException::class);
+        self::$testnet->plc()->getDocument($account->did);
+    }
+
+    public function test_reset_all_clears_pds_and_plc(): void
+    {
+        $account = self::$testnet->createAccount('resetall');
+
+        self::$testnet->resetAll();
+
+        $this->assertTrue(self::$testnet->pds()->isHealthy());
+
+        try {
+            self::$testnet->plc()->getDocument($account->did);
+            $this->fail('Expected exception for missing DID');
+        } catch (\GuzzleHttp\Exception\ClientException) {
+            $this->assertTrue(true);
+        }
+
+        $newAccount = self::$testnet->createAccount('afterfull');
+        $this->assertStringStartsWith('did:plc:', $newAccount->did);
     }
 }

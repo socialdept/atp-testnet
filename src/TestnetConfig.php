@@ -10,6 +10,9 @@ class TestnetConfig
 {
     public readonly string $plcRotationKeyHex;
 
+    /** Default rotation key matching docker-compose.yml */
+    private const DEFAULT_ROTATION_KEY = '32368eae9ee6909042912c57c5db0639b33202602938c99e8c6b094f291e4b26';
+
     public function __construct(
         public int $plcPort = 7100,
         public int $relayPort = 7101,
@@ -19,7 +22,7 @@ class TestnetConfig
         public string $projectName = 'atp-testnet',
         ?string $plcRotationKeyHex = null,
     ) {
-        $this->plcRotationKeyHex = $plcRotationKeyHex ?? bin2hex(random_bytes(32));
+        $this->plcRotationKeyHex = $plcRotationKeyHex ?? self::DEFAULT_ROTATION_KEY;
     }
 
     public function plcUrl(): string
