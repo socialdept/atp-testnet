@@ -310,6 +310,16 @@ class Testnet
         $command = [
             'docker', 'compose',
             '-f', $composePath,
+        ];
+
+        $override = $this->config->resolveComposeOverride();
+        if ($override) {
+            $command[] = '-f';
+            $command[] = $override;
+        }
+
+        $command = [
+            ...$command,
             '-p', $this->config->projectName,
             ...$args,
         ];

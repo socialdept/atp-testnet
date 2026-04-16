@@ -25,6 +25,7 @@ services:
       LOG_ENABLED: "true"
       LOG_LEVEL: info
       LOG_DESTINATION: "1"
+      PLC_DISABLE_RATE_LIMIT: "1"
 
   relay_pg:
     image: postgres:16

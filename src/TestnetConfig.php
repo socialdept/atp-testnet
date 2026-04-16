@@ -13,6 +13,9 @@ class TestnetConfig
     /** Default rotation key matching docker-compose.yml */
     private const DEFAULT_ROTATION_KEY = '32368eae9ee6909042912c57c5db0639b33202602938c99e8c6b094f291e4b26';
 
+    /** Default filename for compose overrides, auto-detected from project root */
+    public const COMPOSE_OVERRIDE_FILE = 'docker-compose.testnet.yml';
+
     public function __construct(
         public int $plcPort = 7100,
         public int $relayPort = 7101,
@@ -21,8 +24,33 @@ class TestnetConfig
         public string $jwtSecret = 'testnet-jwt-secret',
         public string $projectName = 'atp-testnet',
         ?string $plcRotationKeyHex = null,
+        public ?string $composeOverride = null,
     ) {
         $this->plcRotationKeyHex = $plcRotationKeyHex ?? self::DEFAULT_ROTATION_KEY;
+    }
+
+    /**
+     * Resolve the compose override file path.
+     * Checks: explicit path → project root convention → null.
+     */
+    public function resolveComposeOverride(): ?string
+    {
+        if ($this->composeOverride) {
+            return file_exists($this->composeOverride) ? $this->composeOverride : null;
+        }
+
+        // Auto-detect from working directory (project root)
+        $conventional = getcwd().'/'.self::COMPOSE_OVERRIDE_FILE;
+
+        return file_exists($conventional) ? $conventional : null;
+    }
+
+    /**
+     * Get the path to the publishable stub file.
+     */
+    public static function stubPath(): string
+    {
+        return dirname(__DIR__).'/stubs/'.self::COMPOSE_OVERRIDE_FILE;
     }
 
     public function plcUrl(): string

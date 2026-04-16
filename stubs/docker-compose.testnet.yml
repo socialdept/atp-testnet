@@ -1,0 +1,18 @@
+# ATP Testnet Overrides
+#
+# This file is merged on top of the base testnet docker-compose.yml.
+# Only specify values you want to override — everything else keeps its default.
+#
+# Published by: socialdept/atp-testnet
+# Docs: https://github.com/socialdept/atp-testnet
+#
+# Example:
+#
+# services:
+#   plc:
+#     environment:
+#       PLC_DISABLE_RATE_LIMIT: "1"
+#   pds:
+#     environment:
+#       PDS_DEV_MODE: "1"
+#       PDS_HOSTNAME: custom.test

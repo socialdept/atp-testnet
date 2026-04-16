@@ -438,6 +438,33 @@ class TestnetTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // PLC rate limit bypass
+    // -------------------------------------------------------------------------
+
+    public function test_plc_allows_more_than_10_operations_per_hour(): void
+    {
+        self::$testnet->resetAll();
+
+        $signer = self::$testnet->rotationKeypair();
+
+        // Create an account (1 PLC operation for the DID creation)
+        $account = self::$testnet->createAccount('ratelimit');
+
+        // Perform 12 additional PLC operations — exceeds the default 10/hour limit
+        for ($i = 0; $i < 12; $i++) {
+            self::$testnet->plc()->updateHandle(
+                $account->did,
+                "ratelimit{$i}.test",
+                $signer,
+            );
+        }
+
+        // If we got here without a 400 "Too many operations", the bypass works
+        $doc = self::$testnet->plc()->getDocument($account->did);
+        $this->assertContains('at://ratelimit11.test', $doc['alsoKnownAs']);
+    }
+
+    // -------------------------------------------------------------------------
     // Reset (run last — destructive operations)
     // -------------------------------------------------------------------------
 
