@@ -101,9 +101,46 @@ class ImageBuilder
      */
     private function applyPatches(string $name, string $repoDir): void
     {
+        if ($name === 'plc') {
+            $this->patchPlcForTestnet($repoDir);
+        }
+
         if ($name === 'relay') {
             $this->patchRelayForTestnet($repoDir);
         }
+    }
+
+    /**
+     * Patch the PLC server to allow disabling rate limits via env var.
+     * The PLC has a hard-coded 10 ops/hour limit that blocks local dev testing.
+     */
+    private function patchPlcForTestnet(string $repoDir): void
+    {
+        $constraintsFile = $repoDir.'/packages/server/src/db/index.ts';
+
+        if (! file_exists($constraintsFile)) {
+            return;
+        }
+
+        $content = file_get_contents($constraintsFile);
+
+        if (str_contains($content, 'PLC_DISABLE_RATE_LIMIT')) {
+            return;
+        }
+
+        $content = $this->patchOrFail(
+            $content,
+            'enforceOpsRateLimit(ops)',
+            '// TESTNET PATCH: Allow disabling rate limits for local testing
+      if (!process.env.PLC_DISABLE_RATE_LIMIT) {
+        enforceOpsRateLimit(ops)
+      }',
+            'enforceOpsRateLimit bypass in db/index.ts',
+        );
+
+        file_put_contents($constraintsFile, $content);
+
+        echo "[atp-testnet] Patched PLC for testnet (rate limit bypass via PLC_DISABLE_RATE_LIMIT)\n";
     }
 
     /**

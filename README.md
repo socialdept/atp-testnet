@@ -80,6 +80,10 @@ The first build clones the repos and compiles Go and Node — this takes a few m
 
 The relay image is patched during build to work in Docker's internal network (SSRF bypass, hostname validation, domain ban checks, and account host matching are all disabled via the `RELAY_DISABLE_SSRF` environment variable).
 
+The PLC image is patched to support disabling rate limits via the `PLC_DISABLE_RATE_LIMIT` environment variable (enabled by default in the testnet compose file). The production PLC enforces 10 ops/hour per DID — this patch bypasses that for local testing.
+
+If you update the package and the build-time patches change, force a rebuild with `composer testnet:rebuild` or `vendor/bin/testnet-build --rebuild`.
+
 ## Services
 
 | Service | Image | Default Port | Purpose |
@@ -156,6 +160,51 @@ $testnet = Testnet::start(new TestnetConfig(
     adminPassword: 'custom-admin',
 ));
 ```
+
+## Docker Compose Overrides
+
+You can customize the testnet's Docker Compose configuration by publishing an override file to your project root:
+
+```bash
+cp vendor/socialdept/atp-testnet/stubs/docker-compose.testnet.yml docker-compose.testnet.yml
+```
+
+Edit the file to override any service configuration:
+
+```yaml
+# docker-compose.testnet.yml
+services:
+  plc:
+    environment:
+      PLC_DISABLE_RATE_LIMIT: "0"  # Re-enable rate limits
+  pds:
+    environment:
+      PDS_DEV_MODE: "0"
+      PDS_HOSTNAME: custom.test
+```
+
+The testnet automatically detects `docker-compose.testnet.yml` in your working directory and merges it on top of the base configuration. Only specify values you want to change — everything else keeps its default.
+
+> **No rebuild needed.** Override files are applied at runtime via Docker Compose's `-f` merge. Changes take effect on the next `Testnet::start()` — no image rebuild required. Image rebuilds are only needed when the package itself updates its build-time patches (PLC rate limit bypass, relay SSRF bypass).
+
+You can also pass an explicit path via config:
+
+```php
+$testnet = Testnet::start(new TestnetConfig(
+    composeOverride: base_path('my-custom-overrides.yml'),
+));
+```
+
+### Environment Variables
+
+| Variable | Service | Default | Description |
+|----------|---------|---------|-------------|
+| `PLC_DISABLE_RATE_LIMIT` | PLC | `1` | Disable the 10 ops/hour rate limit per DID |
+| `RELAY_DISABLE_SSRF` | Relay | `1` | Disable SSRF protection for Docker networking |
+| `RELAY_ALLOW_INSECURE_HOSTS` | Relay | `1` | Allow HTTP (non-TLS) host connections |
+| `PDS_DEV_MODE` | PDS | `1` | Allow HTTP hostnames, disable SSRF protection |
+| `PDS_INVITE_REQUIRED` | PDS | `false` | Require invite codes for account creation |
+| `PDS_HOSTNAME` | PDS | `pds.test` | PDS hostname for handle domains |
 
 ## API Reference
 
