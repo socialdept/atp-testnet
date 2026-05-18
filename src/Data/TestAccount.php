@@ -13,5 +13,6 @@ class TestAccount
         public readonly string $password,
         public readonly ?string $accessJwt = null,
         public readonly ?string $refreshJwt = null,
-    ) {}
+    ) {
+    }
 }

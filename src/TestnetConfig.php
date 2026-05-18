@@ -16,6 +16,9 @@ class TestnetConfig
     /** Default filename for compose overrides, auto-detected from project root */
     public const COMPOSE_OVERRIDE_FILE = 'docker-compose.testnet.yml';
 
+    /** Handle domain the built-in testnet PDS serves (docker-compose PDS_SERVICE_HANDLE_DOMAINS). */
+    public const PDS_HANDLE_DOMAIN = 'test';
+
     public function __construct(
         public int $plcPort = 7100,
         public int $relayPort = 7101,

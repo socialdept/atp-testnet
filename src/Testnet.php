@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace SocialDept\AtpTestnet;
 
 use RuntimeException;
+use SocialDept\AtpTestnet\Data\PdsSpec;
+use SocialDept\AtpTestnet\Data\SpawnedPds;
 use SocialDept\AtpTestnet\Data\TestAccount;
 use SocialDept\AtpTestnet\Services\PdsService;
 use SocialDept\AtpTestnet\Services\PlcService;
@@ -19,11 +21,14 @@ class Testnet
 
     private RelayService $relayService;
 
+    /** @var array<string, SpawnedPds> Disposable PDSes spawned via spawnPds(), by container name. */
+    private array $spawnedPdses = [];
+
     private function __construct(
         private readonly TestnetConfig $config,
     ) {
         $this->plcService = new PlcService($config->plcUrl());
-        $this->pdsService = new PdsService($config->pdsUrl(), $config->adminPassword);
+        $this->pdsService = new PdsService($config->pdsUrl(), $config->adminPassword, TestnetConfig::PDS_HANDLE_DOMAIN);
         $this->relayService = new RelayService($config->relayUrl());
     }
 
@@ -32,12 +37,12 @@ class Testnet
      */
     public static function start(?TestnetConfig $config = null): self
     {
-        $config ??= new TestnetConfig;
+        $config ??= new TestnetConfig();
 
         self::requireDocker();
 
         // Build images from source if not available locally
-        (new ImageBuilder)->buildAll();
+        (new ImageBuilder())->buildAll();
 
         $instance = new self($config);
         $instance->composeUp();
@@ -75,6 +80,10 @@ class Testnet
      */
     public function stop(): void
     {
+        foreach (array_keys($this->spawnedPdses) as $containerName) {
+            $this->despawnPds($containerName);
+        }
+
         $this->runCompose(['down', '-v', '--remove-orphans']);
     }
 
@@ -83,7 +92,7 @@ class Testnet
      */
     public function createAccount(string $handle, ?string $email = null): TestAccount
     {
-        $fullHandle = str_contains($handle, '.') ? $handle : "{$handle}.test";
+        $fullHandle = str_contains($handle, '.') ? $handle : "{$handle}.".TestnetConfig::PDS_HANDLE_DOMAIN;
 
         return $this->pdsService->createAccount($fullHandle, $email);
     }
@@ -138,12 +147,165 @@ class Testnet
     }
 
     /**
-     * Request the relay to crawl the testnet PDS.
-     * Uses the internal Docker hostname so the relay can reach the PDS.
+     * Request the relay to crawl a PDS. Defaults to the built-in testnet PDS
+     * via its internal Docker hostname; pass a hostname to crawl a
+     * consumer-owned or spawned PDS instead.
      */
-    public function requestRelayCrawl(): void
+    public function requestRelayCrawl(?string $pdsHostname = null): void
     {
-        $this->relayService->requestCrawl('http://pds:3000');
+        $this->relayService->requestCrawl($pdsHostname ?? 'http://pds:3000');
+    }
+
+    /**
+     * PLC directory URL reachable from a container the consumer runs itself
+     * (i.e. not part of this compose project). On Docker Desktop the host's
+     * published PLC port is reachable via host.docker.internal.
+     *
+     * Use this for the PDS env var PDS_DID_PLC_URL when bringing your own PDS
+     * container, so its DIDs register in the shared testnet PLC.
+     */
+    public function plcUrlForContainers(): string
+    {
+        return "http://host.docker.internal:{$this->config->plcPort}";
+    }
+
+    /**
+     * The compose project's default Docker network. Attach a consumer-owned
+     * container to this network to reach services by name (e.g. http://plc:3000).
+     */
+    public function networkName(): string
+    {
+        return "{$this->config->projectName}_default";
+    }
+
+    /**
+     * Launch a disposable PDS container, isolated from the shared testnet PDS,
+     * registering its DIDs in the shared testnet PLC.
+     *
+     * The consumer owns the returned container's lifecycle thereafter (it may
+     * rebuild it with rotated secrets, etc.); call despawnPds() — or stop() —
+     * to tear it down.
+     */
+    public function spawnPds(PdsSpec $spec): SpawnedPds
+    {
+        $hostname = $spec->resolvedHostname();
+        $adminPassword = $spec->resolvedAdminPassword();
+        $jwtSecret = $spec->resolvedJwtSecret();
+        $rotationKeyHex = $spec->resolvedRotationKeyHex();
+        $plcUrl = $spec->plcUrl
+            ?? ($spec->network !== null ? 'http://plc:3000' : $this->plcUrlForContainers());
+
+        $dataMount = $spec->dataPath ?? "{$spec->name}-data";
+        $blobMount = $spec->dataPath !== null ? "{$spec->dataPath}-blobs" : "{$spec->name}-blobs";
+
+        $env = [
+            'PDS_HOSTNAME' => $hostname,
+            'PDS_PORT' => '3000',
+            'PDS_DEV_MODE' => 'true',
+            'PDS_INVITE_REQUIRED' => 'false',
+            'PDS_DATA_DIRECTORY' => '/pds/data',
+            'PDS_BLOBSTORE_DISK_LOCATION' => '/pds/blobs',
+            'PDS_SERVICE_HANDLE_DOMAINS' => ".{$hostname}",
+            'PDS_JWT_SECRET' => $jwtSecret,
+            'PDS_ADMIN_PASSWORD' => $adminPassword,
+            'PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX' => $rotationKeyHex,
+            'PDS_DID_PLC_URL' => $plcUrl,
+            'PDS_BSKY_APP_VIEW_URL' => 'https://api.bsky.app',
+            'PDS_BSKY_APP_VIEW_DID' => 'did:web:api.bsky.app',
+            'PDS_REPORT_SERVICE_URL' => 'https://mod.bsky.app',
+            'PDS_REPORT_SERVICE_DID' => 'did:plc:ar7c4by46qjdydhdevvrndac',
+            'PDS_CRAWLERS' => $this->relayUrlForContainers(),
+            ...$spec->extraEnv,
+        ];
+
+        $command = [
+            'docker', 'run', '-d',
+            '--name', $spec->name,
+            '-p', "127.0.0.1:{$spec->hostPort}:3000",
+            '-v', "{$dataMount}:/pds/data",
+            '-v', "{$blobMount}:/pds/blobs",
+        ];
+
+        if ($spec->network !== null) {
+            $command[] = '--network';
+            $command[] = $spec->network;
+        }
+
+        foreach ($env as $key => $value) {
+            $command[] = '-e';
+            $command[] = "{$key}={$value}";
+        }
+
+        $command[] = $spec->image;
+
+        $run = new Process($command);
+        $run->setTimeout(120);
+        $run->run();
+
+        if (! $run->isSuccessful()) {
+            throw new RuntimeException(
+                "Failed to spawn PDS '{$spec->name}': {$run->getErrorOutput()}"
+            );
+        }
+
+        $url = "http://localhost:{$spec->hostPort}";
+        $this->waitForSpawnedPdsHealth($url, $adminPassword);
+
+        $spawned = new SpawnedPds(
+            containerName: $spec->name,
+            hostPort: $spec->hostPort,
+            url: $url,
+            hostname: $hostname,
+            adminPassword: $adminPassword,
+            jwtSecret: $jwtSecret,
+            rotationKeyHex: $rotationKeyHex,
+            dataPath: $spec->dataPath,
+        );
+
+        $this->spawnedPdses[$spec->name] = $spawned;
+
+        return $spawned;
+    }
+
+    /**
+     * Tear down a spawned PDS. Removes the container and, when it used a
+     * managed volume (no host dataPath), the managed data/blob volumes.
+     */
+    public function despawnPds(SpawnedPds|string $pds): void
+    {
+        $name = $pds instanceof SpawnedPds ? $pds->containerName : $pds;
+        $spawned = $this->spawnedPdses[$name] ?? ($pds instanceof SpawnedPds ? $pds : null);
+
+        (new Process(['docker', 'rm', '-f', $name]))->run();
+
+        if ($spawned !== null && $spawned->dataPath === null) {
+            (new Process(['docker', 'volume', 'rm', '-f', "{$name}-data", "{$name}-blobs"]))->run();
+        }
+
+        unset($this->spawnedPdses[$name]);
+    }
+
+    /**
+     * Relay crawl endpoint reachable from a consumer-owned container.
+     */
+    private function relayUrlForContainers(): string
+    {
+        return "http://host.docker.internal:{$this->config->relayPort}";
+    }
+
+    private function waitForSpawnedPdsHealth(string $url, string $adminPassword): void
+    {
+        $pds = new PdsService($url, $adminPassword);
+
+        for ($i = 0; $i < 60; $i++) {
+            if ($pds->isHealthy()) {
+                return;
+            }
+
+            usleep(1_000_000);
+        }
+
+        throw new RuntimeException("Spawned PDS at {$url} did not become healthy.");
     }
 
     /**
