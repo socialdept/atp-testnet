@@ -24,7 +24,7 @@ trait UsesTestnet
     public static function bootTestnet(): void
     {
         if (self::$testnetInstance === null) {
-            self::$testnetInstance = Testnet::start(new TestnetConfig);
+            self::$testnetInstance = Testnet::start(new TestnetConfig());
         }
     }
 

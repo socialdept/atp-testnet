@@ -15,7 +15,7 @@ class TestnetConfigTest extends TestCase
 
     public function test_resolve_returns_null_when_no_override_exists(): void
     {
-        $config = new TestnetConfig;
+        $config = new TestnetConfig();
 
         // Run from a temp dir with no override file
         $original = getcwd();
@@ -34,7 +34,7 @@ class TestnetConfigTest extends TestCase
         mkdir($dir);
         file_put_contents($dir.'/'.TestnetConfig::COMPOSE_OVERRIDE_FILE, "services: {}\n");
 
-        $config = new TestnetConfig;
+        $config = new TestnetConfig();
         $original = getcwd();
         chdir($dir);
 
@@ -84,7 +84,7 @@ class TestnetConfigTest extends TestCase
 
     public function test_default_ports(): void
     {
-        $config = new TestnetConfig;
+        $config = new TestnetConfig();
 
         $this->assertSame(7100, $config->plcPort);
         $this->assertSame(7101, $config->relayPort);
@@ -93,7 +93,7 @@ class TestnetConfigTest extends TestCase
 
     public function test_default_urls(): void
     {
-        $config = new TestnetConfig;
+        $config = new TestnetConfig();
 
         $this->assertSame('http://localhost:7100', $config->plcUrl());
         $this->assertSame('http://localhost:7101', $config->relayUrl());
@@ -111,7 +111,7 @@ class TestnetConfigTest extends TestCase
 
     public function test_to_env_includes_all_required_vars(): void
     {
-        $config = new TestnetConfig;
+        $config = new TestnetConfig();
         $env = $config->toEnv();
 
         $this->assertArrayHasKey('ATP_TESTNET_PLC_PORT', $env);

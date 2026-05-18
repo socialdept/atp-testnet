@@ -14,11 +14,25 @@ class PdsService
     public function __construct(
         string $baseUrl,
         private readonly string $adminPassword,
+        private readonly ?string $handleDomain = null,
     ) {
         $this->client = new Client([
             'base_uri' => rtrim($baseUrl, '/'),
             'timeout' => 15,
         ]);
+    }
+
+    /**
+     * Build a fully-qualified handle under this PDS's service handle domain,
+     * e.g. handle('alice') => "alice.{$handleDomain}".
+     */
+    public function handle(string $local): string
+    {
+        if ($this->handleDomain === null) {
+            throw new \LogicException('PdsService has no handle domain; construct it with one to use handle().');
+        }
+
+        return "{$local}.{$this->handleDomain}";
     }
 
     // -------------------------------------------------------------------------

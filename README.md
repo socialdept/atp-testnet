@@ -206,6 +206,36 @@ $testnet = Testnet::start(new TestnetConfig(
 | `PDS_INVITE_REQUIRED` | PDS | `false` | Require invite codes for account creation |
 | `PDS_HOSTNAME` | PDS | `pds.test` | PDS hostname for handle domains |
 
+## Disposable & Bring-Your-Own PDS
+
+The shared testnet PDS uses fixed secrets and is reused across tests — fine for
+PLC/account/firehose assertions, but you cannot rotate or rebuild its container
+without breaking other tests. For tests that need a PDS they fully own (secret
+rotation, container rebuilds, multi-PDS migration), spawn a disposable one. Its
+DIDs still register in the shared testnet PLC.
+
+```php
+use SocialDept\AtpTestnet\Data\PdsSpec;
+
+$spawned = $testnet->spawnPds(new PdsSpec(name: 'my-pds', hostPort: 7300));
+
+$pds = $spawned->pds();
+$account = $pds->createAccount($pds->handle('alice')); // alice.my-pds.test
+$doc = $testnet->plc()->getDocument($account->did);     // resolves on the shared PLC
+
+$testnet->despawnPds($spawned); // or $testnet->stop() tears down all spawned PDSes
+```
+
+Only `name` + `hostPort` are required; secrets are generated when omitted so
+the PDS is isolated. Supply `dataPath` for a host bind-mount (survives
+container rebuilds), `network` to attach to `$testnet->networkName()`, or
+explicit secrets/`hostname` so a consumer that rebuilds the container itself
+can reproduce its exact configuration.
+
+To instead run a PDS container entirely yourself against the shared testnet,
+point its `PDS_DID_PLC_URL` at `$testnet->plcUrlForContainers()` and (optionally)
+`$testnet->requestRelayCrawl($yourPdsHostname)` to have the relay index it.
+
 ## API Reference
 
 ### Testnet
@@ -227,7 +257,13 @@ $testnet->pds(): PdsService
 $testnet->relay(): RelayService
 
 // Relay
-$testnet->requestRelayCrawl(): void
+$testnet->requestRelayCrawl(?string $pdsHostname = null): void  // null = built-in testnet PDS
+
+// Bring-your-own / disposable PDS (shares the testnet PLC + relay)
+$testnet->plcUrlForContainers(): string   // PLC URL reachable from a container you run yourself
+$testnet->networkName(): string           // compose network to attach an external container to
+$testnet->spawnPds(PdsSpec $spec): SpawnedPds
+$testnet->despawnPds(SpawnedPds|string $pds): void
 
 // Reset (for test isolation)
 $testnet->resetPds(): void       // Truncate all PDS accounts and repos
@@ -262,6 +298,10 @@ $testnet->plc()->isHealthy(): bool
 ### PDS Service
 
 ```php
+// Handles — "local.{service handle domain}"
+$testnet->pds()->handle(string $local): string   // built-in PDS: "local.test"
+$spawned->pds()->handle(string $local): string   // spawned PDS: "local.{its hostname}"
+
 // Accounts
 $testnet->pds()->createAccount(string $handle, ?string $email = null, ?string $password = null): TestAccount
 $testnet->pds()->deleteAccount(string $did, string $password, string $token): array
