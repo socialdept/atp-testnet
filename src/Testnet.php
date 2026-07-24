@@ -317,8 +317,30 @@ class Testnet
         $container = "{$this->config->projectName}-pds-1";
 
         $script = <<<'JS'
-            const Database = require('/app/node_modules/.pnpm/better-sqlite3@10.1.0/node_modules/better-sqlite3');
             const fs = require('fs');
+
+            // The PDS image installs with pnpm, so `better-sqlite3` is not
+            // resolvable from /app by name: it lives under a version-stamped
+            // directory in the pnpm store. Pinning that version meant every
+            // reset broke the moment the image bumped it (10.1.0 -> 12.11.1),
+            // and the failure surfaced as MODULE_NOT_FOUND on every single
+            // integration test, so find the directory instead of naming it.
+            const Database = (() => {
+                try {
+                    return require('better-sqlite3');
+                } catch {
+                    const store = '/app/node_modules/.pnpm';
+                    const dir = fs
+                        .readdirSync(store)
+                        .find((name) => name.startsWith('better-sqlite3@'));
+
+                    if (!dir) {
+                        throw new Error(`better-sqlite3 not found under ${store}`);
+                    }
+
+                    return require(`${store}/${dir}/node_modules/better-sqlite3`);
+                }
+            })();
 
             // Reset account database — delete all user data, preserve schema
             const db = new Database('/pds/data/account.sqlite');
