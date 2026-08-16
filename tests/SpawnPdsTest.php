@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SocialDept\AtpTestnet\Tests;
 
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use SocialDept\AtpTestnet\Data\PdsSpec;
 use SocialDept\AtpTestnet\Testnet;
@@ -11,8 +12,11 @@ use SocialDept\AtpTestnet\Testnet;
 /**
  * Integration tests for disposable, consumer-owned PDS support.
  *
- * Requires Docker and Docker Compose.
+ * Requires Docker and Docker Compose, and reaches the PLC over
+ * host.docker.internal, which Docker Desktop provides but Linux hosts do not.
+ * Grouped as integration so CI can skip it.
  */
+#[Group('integration')]
 class SpawnPdsTest extends TestCase
 {
     private static ?Testnet $testnet = null;
