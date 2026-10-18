@@ -17,7 +17,7 @@
     ],
     "require": {
         "php": "^8.3",
-        "guzzlehttp/guzzle": "^7.0",
+        "guzzlehttp/guzzle": "^7.0|^8.0",
         "socialdept/atp-cbor": "^0.2",
         "symfony/process": "^7.0|^8.0",
         "textalk/websocket": "^1.5"
