@@ -19,7 +19,7 @@ When requesting or submitting new features, first consider whether it might be u
 ### Before Filing an Issue
 
 - Search existing issues to avoid duplicates
-- Check the [documentation](README.md) to ensure it's not a usage question
+- Check the [documentation](docs/introduction.md) to ensure it's not a usage question
 - Provide a clear title and description
 - Include steps to reproduce the issue
 - Specify your environment (PHP version, Docker version)
@@ -40,10 +40,22 @@ When requesting or submitting new features, first consider whether it might be u
 
 - **[PSR-12 Coding Standard](https://www.php-fig.org/psr/psr-12/)** - Run `vendor/bin/php-cs-fixer fix` to automatically fix code style issues.
 - **Add tests** - Your patch won't be accepted if it doesn't have tests. All tests must use [PHPUnit](https://phpunit.de/).
-- **Document any change in behavior** - Make sure the `README.md` and any other relevant documentation are kept up-to-date.
+- **Document any change in behavior** - Make sure the `README.md` and the pages under `docs/` are kept up-to-date.
 - **Consider our release cycle** - We follow [SemVer v2.0.0](https://semver.org/). Randomly breaking public APIs is not an option.
 - **One pull request per feature** - If you want to do more than one thing, send multiple pull requests.
 - **Send coherent history** - Make sure each individual commit in your pull request is meaningful. If you had to make multiple intermediate commits while developing, please [squash them](https://www.git-scm.com/book/en/v2/Git-Tools-Rewriting-History#Changing-Multiple-Commit-Messages) before submitting.
+
+## How Changes Land
+
+`main` is protected. Every change arrives by pull request, and direct pushes are
+blocked.
+
+- **Merges are squash-only, and the PR title becomes the permanent commit
+  message on `main`.** Write it as one descriptive line. Individual commit
+  messages are preserved in the body.
+- **Two checks must pass:** `Tests (PHP 8.4)` and `php-cs-fixer`. Your branch
+  must also be up to date with `main` before merging.
+- No approval is required, but review threads must be resolved.
 
 ## Running Tests
 
@@ -53,9 +65,14 @@ When requesting or submitting new features, first consider whether it might be u
 vendor/bin/phpunit
 ```
 
+The tests boot a real testnet. CI runs `vendor/bin/phpunit --exclude-group integration`,
+which skips the `integration` group. Those tests spawn extra PDS containers that reach
+the PLC directory over `host.docker.internal`, which Docker Desktop provides but Linux
+hosts do not.
+
 ## Code Style
 
-This package follows PSR-12 coding standard. Run PHP CS Fixer before submitting:
+This package follows the PSR-12 coding standard. Run PHP CS Fixer before submitting:
 
 ```bash
 vendor/bin/php-cs-fixer fix
